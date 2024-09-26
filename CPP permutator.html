@@ -1,0 +1,1638 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>CPP Arranger</title>
+	<link rel="shortcut icon" type="icon" href="https://www.harvardapparatus.com/media/catalog/product/cache/62fea656a0c51c97eb54cff2b4efba4c/0/1/01_cpp_8x8.jpg" />
+	<style>
+		div.a 
+		{
+			width: 400px;
+			display: inline-block;
+		}
+
+		table.Output
+		{
+			margin-left: 5%;
+			text-align: center;
+		}
+
+		.Output td
+		{
+			width: auto;
+		}
+
+		h2
+		{
+			margin-left: 5%;
+		}
+
+		td.white
+		{
+			background-color: white;
+			width: 50px;
+			height: 50px;
+			text-align: center;
+			font-weight: bold;
+		}
+
+		td.black
+		{
+			background-color: rgb(150,150,150);
+			width: 50px;
+			height: 50px;
+			text-align: center;
+			font-weight: bold;
+		}
+		td.deviceno
+		{
+			width: 50px;
+			text-align: center;
+			font-size: 80%;
+			background-color: orange;
+			font-weight: bold;
+		}
+
+		td.inj1color
+		{
+			background-color: blue;
+			width: 30px;
+		}
+
+		td.inj2color
+		{
+			background-color: green;
+			width: 30px;
+		}
+
+	</style>
+</head>
+<body>
+	Total number of animals used: <input type="number" id="total_animals" onchange="check_number()"><br>
+	Number of animals in drug group: <input type="number" id="drug_number" onchange="calculate_control()"><br>
+	Number of animals in control group: <input type="number" id="control_number" onblur="check_total()"><br> <br>
+
+	Upload Excel file: 
+	<input type="file" id="fileUpload" />
+	
+	<input type="button" id="upload" value="Go!" onclick="UploadProcess(0)" />
+	<br/><br/>
+	<div id="ExcelTable"></div>
+	<br/>
+	<div id="OutputTable" class="outputdiv"></div> 
+	</br>
+	<div id='plotDiv'></div>
+	</br>
+	<div id="CyclesDiv1"></div> 
+	</br>
+	<div id="CyclesDiv2"></div> 
+
+	
+	<!-- Load scripts -->
+	<script src='https://cdn.plot.ly/plotly-latest.min.js'></script>
+	<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.13.5/xlsx.full.min.js"></script>
+	<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.13.5/jszip.js"></script>
+	<script type="text/javascript">
+
+	    function UploadProcess(trial) {
+	    	var ExcelTable = document.getElementById("ExcelTable");
+	        ExcelTable.innerHTML = "Processing... This may take up to 30 seconds.";
+	        //Reference the FileUpload element.
+	        var fileUpload = document.getElementById("fileUpload");
+	 
+	        //Validate whether File is valid Excel file.
+	        var regex = /^([a-zA-Z0-9\s_\\.\-:])+(.xls|.xlsx)$/;
+	        if (regex.test(fileUpload.value.toLowerCase())) {
+	            if (typeof (FileReader) != "undefined") {
+	                var reader = new FileReader();
+	 
+	                //For Browsers other than IE.
+	                if (reader.readAsBinaryString) {
+	                    reader.onload = function (e) {
+	                        GetTableFromExcel(e.target.result, trial);
+	                    };
+	                    reader.readAsBinaryString(fileUpload.files[0]);
+	                } else {
+	                    //For IE Browser.
+	                    reader.onload = function (e) {
+	                        var data = "";
+	                        var bytes = new Uint8Array(e.target.result);
+	                        for (var i = 0; i < bytes.byteLength; i++) {
+	                            data += String.fromCharCode(bytes[i]);
+	                        }
+	                        GetTableFromExcel(data);
+	                    };
+	                    reader.readAsArrayBuffer(fileUpload.files[0]);
+	                }
+	            } else {
+	                alert("This browser does not support HTML5.");
+	            }
+	        } else {
+	            alert("Please upload a valid Excel file.");
+	        }
+	    };
+	    function GetTableFromExcel(data, trial) {
+	        //Read the Excel File data in binary
+
+	        var workbook = XLSX.read(data, {
+	            type: 'binary'
+	        });
+	 
+	        //get the name of First Sheet.
+	        var Sheet = workbook.SheetNames[0];
+	 
+	        //Read all rows from First Sheet into an JSON array.
+	        var excelRows = XLSX.utils.sheet_to_row_object_array(workbook.Sheets[Sheet]);
+	 
+	        //Create a HTML Table element.
+	        var myTable  = document.createElement("table");
+	        myTable.border = "1";
+	 
+	        //Add the header row.
+	        var row = myTable.insertRow(-1);
+	 
+	        //Add the header cells.
+	        var headerCell = document.createElement("TH");
+	        headerCell.innerHTML = "Cage ID";
+	        row.appendChild(headerCell);
+
+	        headerCell = document.createElement("TH");
+	        headerCell.innerHTML = "Animal ID";
+	        row.appendChild(headerCell);
+
+	        headerCell = document.createElement("TH");
+	        headerCell.innerHTML = "Weight";
+	        row.appendChild(headerCell);
+	 
+	        headerCell = document.createElement("TH");
+	        headerCell.innerHTML = "Black Comp %";
+	        row.appendChild(headerCell);
+	 
+	        headerCell = document.createElement("TH");
+	        headerCell.innerHTML = "White Comp %";
+	        row.appendChild(headerCell);	
+
+	        headerCell = document.createElement("TH");
+	        headerCell.innerHTML = "Black Comp t";
+	        row.appendChild(headerCell);
+	 
+	        headerCell = document.createElement("TH");
+	        headerCell.innerHTML = "White Comp t";
+	        row.appendChild(headerCell); 
+
+	        var mice = [];
+
+	        class Mouse
+	        {
+			  constructor(name, cage, weight, black_perc, white_perc, black_time, white_time, drug_comp) 
+			  {
+			  	this.name = name;
+			    this.cage = cage;
+			    this.weight = parseFloat(weight);
+			    this.black_perc = parseFloat(black_perc);
+			    this.white_perc = parseFloat(white_perc);
+			    this.black_time = parseFloat(black_time);
+			    this.white_time = parseFloat(white_time);
+			    this.drug_comp = drug_comp;			    
+			  }
+			}
+	 		
+
+	 		var cages = new Array();
+	 		var prev_cage = undefined;
+	        var cage_n = -1;
+	        var blackperc;
+	        var whiteperc;
+
+	        //Add the data rows from Excel file.
+	        for (var i = 0; i < excelRows.length; i++) {
+	            //Add the data row.
+	            var row = myTable.insertRow(-1);
+	 
+	            //Add the data cells.
+
+	            var cell = row.insertCell(-1);
+	            cell.innerHTML = excelRows[i].Cage;
+
+	            cell = row.insertCell(-1);
+	            cell.innerHTML = excelRows[i].Animal_ID;
+
+	            cell = row.insertCell(-1);
+	            cell.innerHTML = excelRows[i].Weight;
+	 
+	            cell = row.insertCell(-1);
+	            cell.innerHTML = excelRows[i].Black_time;
+	 
+	            cell = row.insertCell(-1);
+	            cell.innerHTML = excelRows[i].White_time;
+
+	            blackperc = parseFloat(excelRows[i].Black_time)/(parseFloat(excelRows[i].Black_time)+parseFloat(excelRows[i].White_time))*100;
+	            whiteperc = parseFloat(excelRows[i].White_time)/(parseFloat(excelRows[i].Black_time)+parseFloat(excelRows[i].White_time))*100;
+
+	            cell = row.insertCell(-1);
+	            cell.innerHTML = blackperc;
+	 
+	            cell = row.insertCell(-1);
+	            cell.innerHTML = whiteperc;
+
+	            mice[i] = new Mouse(excelRows[i].Animal_ID, excelRows[i].Cage, excelRows[i].Weight, blackperc, whiteperc, excelRows[i].Black_time, excelRows[i].White_time, undefined);
+
+	            // calculate the number of cages from excel file input
+	       	    var current_cage = parseInt(excelRows[i].Cage);
+	       	    if (current_cage == prev_cage)
+	       	    {
+	       	    	cages[cage_n]++;
+	       	    }
+	       	    else 
+	       	    {
+	       	    	cage_n++;
+	       	    	cages[cage_n] = 1;
+	       	    }   
+	       	    prev_cage = current_cage;
+	        }   
+	        console.log(cages); 
+	 		
+	        // var ExcelTable = document.getElementById("ExcelTable");
+	        // ExcelTable.innerHTML = "";
+	        // ExcelTable.appendChild(myTable); // UN-COMMENT THESE LINES TO MAKE THE UPLOADED EXCEL TABLE VISIBLE
+
+	        var total_animals = document.getElementById("total_animals").value;
+	        var inputcheck1 = check_number(); 
+	        var inputcheck2 = final_check(excelRows.length);
+	        var inputcheck3 = check_total(); 
+
+	        if (inputcheck1 && inputcheck2 && inputcheck3)
+	        {
+	        	myFunction(mice, cages, trial);
+		    }
+		    else 
+		    {
+		    	var ExcelTable = document.getElementById("ExcelTable");
+	        	ExcelTable.innerHTML = " ";
+		    }
+	    }
+
+	    function check_number()
+	    {
+	    	var total_animals = document.getElementById("total_animals").value;
+	    	if (total_animals < 0)
+	    	{
+	    		alert('Please enter a positive number.');
+	    	}
+	    	if (total_animals > 40)
+	    	{
+	    		alert('The number is too large. This may freeze the computer. Please contact administrator if using > 40 animals.')
+	    	}
+	    	else
+	    	{
+	    		return true;
+	    	}
+	    }
+
+		function calculate_control()
+		{
+			var total_animals = document.getElementById("total_animals").value;
+			var drug_number = document.getElementById("drug_number").value;
+			if (drug_number < 0)
+	    	{
+	    		alert('Please enter a positive number.');
+	    	}
+	    	// else if (drug_number >= total_animals)
+	    	// {
+	    	// 	alert('N of drug group cannot be >= total number of animals ' + total_animals + ", " + drug_number);
+	    	// }
+	    	else
+	    	{
+	    		var control_number = total_animals - drug_number;
+				document.getElementById("control_number").value = control_number;
+				return true;
+	    	}
+		}
+
+		function check_total()
+		{
+			var total_animals = Number(document.getElementById("total_animals").value);
+			var drug_number = Number(document.getElementById("drug_number").value);
+			var control_number = Number(document.getElementById("control_number").value);
+			var sum = drug_number + control_number;
+			if (total_animals != sum)
+			{
+				alert("Number of drug animals and control animals doesn't match the total!");
+			}
+			else
+			{
+				return true;
+			}
+		}
+
+		function final_check(excel_total)
+		{
+			var total_animals = Number(document.getElementById("total_animals").value);
+			var drug_number = Number(document.getElementById("drug_number").value);
+			var control_number = Number(document.getElementById("control_number").value);
+
+			if (excel_total != total_animals)
+			{
+				alert('The number of animals entered does not match the number of animals in the Excel file!');
+			}
+			else if (total_animals <= 0 || drug_number <= 0 || control_number <= 0)
+			{
+				alert('Please enter positive numbers!');
+			}
+			else if (drug_number >= total_animals || control_number >= total_animals)
+			{
+				alert('The number of animals in any one group cannot be higher than total number of animals!');
+			}
+			else
+			{
+				return true;
+			}
+		}
+
+		function myFunction(mice, cages, trial)
+		{
+			// ADD: check if all data in form has been filled
+
+			var total_animals = document.getElementById("total_animals").value;
+			var drug_number = document.getElementById("drug_number").value;
+			var control_number = document.getElementById("control_number").value;
+			var device_no = 10;
+			var double_cond = true; // change to "false" if you want to condition one animal per device
+			var mice_per_device;
+			if (double_cond)
+			{
+				mice_per_device = 2;
+			}
+			else
+			{
+				mice_per_device = 1;
+			}
+			var single_remainder = true;
+			var leftover_single;
+			var sessions = Math.floor((total_animals-1)/(device_no*mice_per_device)) + 1;
+
+			// Calculate and randomly assign drug vs saline animals within each cage
+
+			var cage_distribution = distribute_cages(total_animals, drug_number, control_number, cages); // calculates the number of drug and control mice in each cage
+			console.log(cage_distribution);
+	
+			var number_of_cages = cage_distribution.length;
+			var cages_array = new Array();
+			for (i=0; i<number_of_cages; i++)
+			{
+				cages_array[i] = new Array(); // creates an empty array for each cage to assign drug vs control
+			}
+
+			var starting_cage = 0;
+
+			var return_groups = group_shuffle(starting_cage, cage_distribution, number_of_cages, cages_array); // randomly assigns drug and control mice within each cage
+			var group_arrangement = return_groups[0];
+			var merged_groups = return_groups[1];
+
+			var comp_arrangement = new Array();
+			var min_array = new Array();
+			var opposite_array = new Array();
+
+			var cycles = cycle_arranger(double_cond, total_animals, device_no); // returns an array of how many cycles (and what types) will be used
+
+			var return_array = comp_arranger(cycles.length, cycles, merged_groups, mice); // creates total arrangement & calls compare_means function from within
+			console.log('Return array:', return_array);
+			var return_array_copy = return_array.slice();
+			var min = return_array_copy[0];
+			var min_array = return_array_copy[1];
+			var time_diff = return_array_copy[2];
+			var perc_diff = return_array_copy[3];
+			var plot_array = return_array_copy[4];
+			var weight_diff = return_array_copy[5];
+
+
+			var merged_min_array = new Array();
+
+			// CREATE A MERGED COMPARTMENT ARRANGEMENT ARRAY
+			for (i=0; i < min_array.length; i++)
+			{
+				for (j=0; j < cycles[i][1]; j++)
+				{
+					merged_min_array[cycles[i][2][j]] = min_array[i][j];
+					mice[cycles[i][2][j]].drug_comp = min_array[i][j];
+				}
+				if (cycles[i][0] == 2)
+				{
+					for (j=0; j < cycles[i][1]; j++)
+					{
+						merged_min_array[cycles[i][3][j]] = Math.abs(min_array[i][j]-1);
+						mice[cycles[i][3][j]].drug_comp = Math.abs(min_array[i][j]-1);
+					}
+				}
+			}
+			console.log('Merged min_array: ', merged_min_array);
+
+			if (time_diff < 4 && perc_diff < 0.5)
+			{
+				var ExcelTable = document.getElementById("ExcelTable");
+	        	ExcelTable.innerHTML = ""; // delete the 'Processing...' line
+				
+				// ------------ CONSTRUCT TABLE -------------- //
+
+				var TableHTML = document.getElementById("OutputTable");
+				TableHTML.innerHTML = "";
+				var table_header = document.createElement("h2");
+				table_header.innerHTML = "Best arrangement table";
+				TableHTML.appendChild(table_header);
+
+		        //// MY STUFF
+		        var output_table = document.createElement("table");
+		        output_table.className = 'Output';
+		        output_table.border = "1";
+		        
+		        // Add a header row
+		        var row = output_table.insertRow(-1);
+
+		        // Add header cells
+		        var header_cell = document.createElement("TH");
+		        header_cell.innerHTML = "Animal ID";
+		        row.appendChild(header_cell);
+
+		        var header_cell = document.createElement("TH");
+		        header_cell.innerHTML = "Black %";
+		        row.appendChild(header_cell);
+
+		        var header_cell = document.createElement("TH");
+		        header_cell.innerHTML = "White %";
+		        row.appendChild(header_cell);
+
+		        var header_cell = document.createElement("TH");
+		        header_cell.innerHTML = "Black time";
+		        row.appendChild(header_cell);
+
+		        var header_cell = document.createElement("TH");
+		        header_cell.innerHTML = "White time";
+		        row.appendChild(header_cell);
+
+		        var header_cell = document.createElement("TH");
+		        header_cell.innerHTML = "Group";
+		        row.appendChild(header_cell);
+
+		        var header_cell = document.createElement("TH");
+		        header_cell.innerHTML = "Compartment";
+		        row.appendChild(header_cell);
+
+		        //Add the data rows from Excel file.
+		        for (var i = 0; i < total_animals; i++) 
+		        {
+		            //Add the data row.
+		            var row = output_table.insertRow(-1);
+
+		            //Add the data cells.
+		            var cell = row.insertCell(-1);
+		            cell.innerHTML = mice[i].name;
+		            cell.style.backgroundColor = "#EFFEEE";
+		            cell.style.fontWeight = "bold";
+
+		            var cell = row.insertCell(-1);
+		            cell.innerHTML = mice[i].black_perc.toFixed(2);
+		            if (merged_min_array[i] == 0)
+		            {
+		            	// cell.style.fontWeight = "bold";
+		            	cell.style.color = "red";
+		            }		            
+
+		            var cell = row.insertCell(-1);
+		            cell.innerHTML = mice[i].white_perc.toFixed(2);
+		            if (merged_min_array[i] == 1)
+		            {
+		            	// cell.style.fontWeight = "bold";
+		            	cell.style.color = "red";
+		            }	
+
+		            var cell = row.insertCell(-1);
+		            cell.innerHTML = mice[i].black_time;
+		            if (merged_min_array[i] == 0)
+		            {
+		            	// cell.style.fontWeight = "bold";
+		            	cell.style.color = "red";
+		            }	
+
+		            var cell = row.insertCell(-1);
+		            cell.innerHTML = mice[i].white_time;
+		            if (merged_min_array[i] == 1)
+		            {
+		            	// cell.style.fontWeight = "bold";
+		            	cell.style.color = "red";
+		            }	
+
+		            var cell = row.insertCell(-1);
+		            if (merged_groups[i] == 0)
+		            {
+		            	var group_name = "CONTROL";
+		            	cell.style.backgroundColor = "#C7E3FC";
+		            }
+		            else
+		            {
+		            	var group_name = "DRUG";
+		            	cell.style.backgroundColor = "#FCD0C7";
+		            }
+		            cell.innerHTML = group_name;
+
+		            cell = row.insertCell(-1);
+		            if (merged_min_array[i] == 0)
+		            {
+		            	var comp_name = "BLACK";
+		            	cell.style.backgroundColor = "grey";
+		            }
+		            else
+		            {
+		            	var comp_name = "WHITE";
+		            }
+		            cell.innerHTML = comp_name;
+		        }
+
+		        // Insert the whole table in the document
+
+		        TableHTML.appendChild(output_table);
+
+		        // var linebreak = document.createElement("br");
+		        // TableHTML.appendChild(linebreak);
+
+		        ///// END
+
+		        // Plot the baseline graphs
+
+				var graphHTML = document.getElementById("plotDiv");
+				graphHTML.innerHTML = "";
+				var graph_header = document.createElement("h2");
+				graph_header.innerHTML = "Best arrangement plots (mean +/-SEM)";
+				graphHTML.appendChild(graph_header);
+
+				plot_baseline('plot1', 'Actual times', plot_array[2], plot_array[3], plot_array[6], plot_array[7]);
+				plot_baseline('plot2', 'Percent preference', plot_array[0], plot_array[1], plot_array[4], plot_array[5]);
+				// plot_baseline('plot3', 'Animal Weight', plot_array[8], plot_array[9], plot_array[10], plot_array[11]); // UNDO COMMENT TO PLOT WEIGHTS 
+
+
+		        // Create Cycles Table
+		        var CyclesHTML = document.getElementById("CyclesDiv1");
+				CyclesHTML.innerHTML = "";
+				var table_header = document.createElement("h2");
+				table_header.innerHTML = "Morning Sessions";
+				table_header.style.textDecoration = 'underline';
+				CyclesHTML.appendChild(table_header);
+
+
+				// Legends table
+		        	var CycleLegend = document.createElement("table");
+				    CycleLegend.className = 'cyclelegend';
+				    CycleLegend.border = "1";
+
+					var row = CycleLegend.insertRow(-1);
+					var cell = document.createElement("TD");
+					cell.className = 'inj1color';
+					row.appendChild(cell);
+					var cell = document.createElement("TD");
+					cell.innerHTML = "Inject first";
+					row.appendChild(cell);
+
+					var row = CycleLegend.insertRow(-1);
+					var cell = document.createElement("TD");
+					cell.className = 'inj2color';
+					row.appendChild(cell);
+					var cell = document.createElement("TD");
+					cell.innerHTML = "Inject second";
+					row.appendChild(cell);
+
+					CyclesHTML.appendChild(CycleLegend);
+				
+				// ADD TWO ARRANGEMENTS, MORNING AND EVENING
+				
+		        //// MY STUFF
+		        for (i=0; i<sessions; i++)
+		        {
+		        	// MORNING
+		        	var CycleDiv = document.createElement("div");
+		        	CycleDiv.id = "CycleDiv" + i;
+		        	CyclesHTML.appendChild(CycleDiv);
+
+		        	// Session header
+		        	var CycleHeader = document.createElement("h3");
+		        	CycleHeader.innerHTML = "Session " + (i+1);
+		        	CycleDiv.appendChild(CycleHeader);
+
+		        	// Construct each session table
+		        	var CycleTable = document.createElement("table");
+				    CycleTable.className = 'cycletable';
+				    CycleTable.border = "1";
+
+				    var row = CycleTable.insertRow(0);
+
+			    	for (j=0; j<cycles[i][1]; j++)
+				    {
+						var cell = document.createElement("TD");
+						if (j % 2 == 0)
+						{
+							cell.className = 'black';
+							if (j < cycles[i][2].length)
+							{
+								if (mice[cycles[i][2][j]].drug_comp == 0)
+								{
+									cell.innerHTML = mice[cycles[i][2][j]].name;
+									cell.style.color = "blue";
+								}
+							}
+							if (j < cycles[i][3].length)
+							{
+								if (mice[cycles[i][3][j]].drug_comp == 0)
+								{
+									cell.innerHTML = mice[cycles[i][3][j]].name;
+									cell.style.color = "green";
+								}
+							}							
+						}
+						else
+						{
+							cell.className = 'white';
+							if (j < cycles[i][2].length)
+							{
+								if (mice[cycles[i][2][j]].drug_comp == 1)
+								{
+									cell.innerHTML = mice[cycles[i][2][j]].name;
+									cell.style.color = "blue";
+								}
+							}
+							if (j < cycles[i][3].length)
+							{
+								if (mice[cycles[i][3][j]].drug_comp == 1)
+								{
+									cell.innerHTML = mice[cycles[i][3][j]].name;
+									cell.style.color = "green";
+								}
+							}
+						}
+						row.appendChild(cell);
+					}
+
+					if (cycles[i][1] < 10 && i == sessions-1 && cycles[i+1][1] < 10)
+				    {				    	
+				    	for (j=device_no - cycles[i+1][1]; j<device_no; j++)
+					    {
+							var cell = document.createElement("TD");
+							if (j % 2 == 0)
+							{
+								cell.className = 'black';
+								if (j < device_no)
+								{
+									if (mice[cycles[i+1][2][cycles[i+1][1]-10+j]].drug_comp == 0)
+									{
+										cell.innerHTML = mice[cycles[i+1][2][cycles[i+1][1]-10+j]].name;
+									}
+								}
+							}
+							else
+							{
+								cell.className = 'white';
+								if (j < device_no)
+								{
+									if (mice[cycles[i+1][2][cycles[i+1][1]-10+j]].drug_comp == 1)
+									{
+										cell.innerHTML = mice[cycles[i+1][2][cycles[i+1][1]-10+j]].name;
+									}
+								}
+							}
+							cell.style.color = "blue";
+					        row.appendChild(cell);			        
+					    }
+				    }				    
+				    
+
+				    var row = CycleTable.insertRow(1);
+				    for (j=0; j<cycles[i][1]; j++)
+				    {
+						var cell = document.createElement("TD");
+						if (j % 2 == 1)
+						{
+							cell.className = 'black';
+							if (j < cycles[i][3].length)
+							{
+								if (mice[cycles[i][3][j]].drug_comp == 0)
+								{
+									cell.innerHTML = mice[cycles[i][3][j]].name;
+									cell.style.color = "green";
+								}
+							}
+							
+							if (j < cycles[i][2].length)
+							{
+								if (mice[cycles[i][2][j]].drug_comp == 0)
+								{
+									cell.innerHTML = mice[cycles[i][2][j]].name;
+									cell.style.color = "blue";
+								}
+							}
+						}
+						else
+						{
+							cell.className = 'white';
+							if (j < cycles[i][3].length)
+							{
+								if (mice[cycles[i][3][j]].drug_comp == 1)
+								{
+									cell.innerHTML = mice[cycles[i][3][j]].name;
+									cell.style.color = "green";
+								}
+							}
+							
+							if (j < cycles[i][2].length)
+							{
+								if (mice[cycles[i][2][j]].drug_comp == 1)
+								{
+									cell.innerHTML = mice[cycles[i][2][j]].name;
+									cell.style.color = "blue";
+								}
+							}
+						}
+						row.appendChild(cell);
+				    }
+					
+					if (cycles[i][1] < 10 && i == sessions-1 && cycles[i+1][1] < 10)
+				    {				    	
+				    	for (j=device_no - cycles[i+1][1]; j<device_no; j++)
+					    {
+							var cell = document.createElement("TD");
+							if (j % 2 == 1)
+							{
+								cell.className = 'black';
+								if (j < device_no)
+								{
+									if (mice[cycles[i+1][2][cycles[i+1][1]-10+j]].drug_comp == 0)
+									{
+										cell.innerHTML = mice[cycles[i+1][2][cycles[i+1][1]-10+j]].name;
+									}
+								}
+							}
+							else
+							{
+								cell.className = 'white';
+								if (j < device_no)
+								{
+									if (mice[cycles[i+1][2][cycles[i+1][1]-10+j]].drug_comp == 1)
+									{
+										cell.innerHTML = mice[cycles[i+1][2][cycles[i+1][1]-10+j]].name;
+									}
+								}
+							}
+							cell.style.color = "blue";
+					        row.appendChild(cell);			        
+					    }
+				    }
+	
+				   	var row = CycleTable.insertRow(-1);
+			    	for (j=1; j <= device_no; j++)
+			    	{
+			    		var cell = document.createElement("TD");
+			    		cell.className = 'deviceno';
+			    		cell.innerHTML = j;
+			    		row.appendChild(cell);
+			    	}
+			    	CycleDiv.appendChild(CycleTable);	
+
+			    	var linebreak = document.createElement("br");
+		        	CycleDiv.appendChild(linebreak);
+			    }
+			    
+
+
+
+			    // AFTERNOON TABLE
+
+			    var CyclesHTML2 = document.getElementById("CyclesDiv2");
+				CyclesHTML2.innerHTML = "";
+				var table_header = document.createElement("h2");
+				table_header.innerHTML = "Afternoon Sessions";
+				table_header.style.textDecoration = 'underline';
+				CyclesHTML2.appendChild(table_header);
+
+				// Legends table
+	        	var CycleLegend = document.createElement("table");
+			    CycleLegend.className = 'cyclelegend';
+			    CycleLegend.border = "1";
+
+				var row = CycleLegend.insertRow(-1);
+				var cell = document.createElement("TD");
+				cell.className = 'inj1color';
+				row.appendChild(cell);
+				var cell = document.createElement("TD");
+				cell.innerHTML = "Inject first";
+				row.appendChild(cell);
+
+				var row = CycleLegend.insertRow(-1);
+				var cell = document.createElement("TD");
+				cell.className = 'inj2color';
+				row.appendChild(cell);
+				var cell = document.createElement("TD");
+				cell.innerHTML = "Inject second";
+				row.appendChild(cell);
+
+				CyclesHTML2.appendChild(CycleLegend);
+
+				for (i=0; i<sessions; i++)
+		        {
+
+		       	 	// AFTERNOON
+				    var CycleDiv2 = document.createElement("div");
+		        	CycleDiv2.id = "CycleDiv2" + i;
+		        	CyclesHTML2.appendChild(CycleDiv2);
+
+		        	// Session header
+		        	var CycleHeader = document.createElement("h3");
+		        	CycleHeader.innerHTML = "Session " + (i+1);
+		        	CycleDiv2.appendChild(CycleHeader);
+
+		        	// Construct each session table
+		        	var CycleTable2 = document.createElement("table");
+				    CycleTable2.className = 'cycletable';
+				    CycleTable2.border = "1";
+
+				    var row = CycleTable2.insertRow(0);
+				    for (j=0; j<cycles[i][1]; j++)
+				    {
+						var cell = document.createElement("TD");
+						if (j % 2 == 0)
+						{
+							cell.className = 'black';
+							if (j < cycles[i][2].length)
+							{
+								if (mice[cycles[i][2][j]].drug_comp == 1)
+								{
+									cell.innerHTML = mice[cycles[i][2][j]].name;
+									cell.style.color = "blue";
+								}
+							}
+							if (j < cycles[i][3].length)
+							{
+								if (mice[cycles[i][3][j]].drug_comp == 1)
+								{
+									cell.innerHTML = mice[cycles[i][3][j]].name;
+									cell.style.color = "green";
+								}
+							}							
+						}
+						else
+						{
+							cell.className = 'white';
+							if (j < cycles[i][2].length)
+							{
+								if (mice[cycles[i][2][j]].drug_comp == 0)
+								{
+									cell.innerHTML = mice[cycles[i][2][j]].name;
+									cell.style.color = "blue";
+								}
+							}
+							if (j < cycles[i][3].length)
+							{
+								if (mice[cycles[i][3][j]].drug_comp == 0)
+								{
+									cell.innerHTML = mice[cycles[i][3][j]].name;
+									cell.style.color = "green";
+								}
+							}
+						}
+						row.appendChild(cell);
+					}
+
+					if (cycles[i][1] < 10 && i == sessions-1 && cycles[i+1][1] < 10)
+				    {				    	
+				    	for (j=device_no - cycles[i+1][1]; j<device_no; j++)
+					    {
+							var cell = document.createElement("TD");
+							if (j % 2 == 0)
+							{
+								cell.className = 'black';
+								if (j < device_no)
+								{
+									if (mice[cycles[i+1][2][cycles[i+1][1]-10+j]].drug_comp == 1)
+									{
+										cell.innerHTML = mice[cycles[i+1][2][cycles[i+1][1]-10+j]].name;
+									}
+								}
+							}
+							else
+							{
+								cell.className = 'white';
+								if (j < device_no)
+								{
+									if (mice[cycles[i+1][2][cycles[i+1][1]-10+j]].drug_comp == 0)
+									{
+										cell.innerHTML = mice[cycles[i+1][2][cycles[i+1][1]-10+j]].name;
+									}
+								}
+							}
+							cell.style.color = "blue";
+					        row.appendChild(cell);				        
+					    }
+				    }
+
+				    
+				    
+
+				    var row = CycleTable2.insertRow(1);
+				    for (j=0; j<cycles[i][1]; j++)
+				    {
+						var cell = document.createElement("TD");
+						if (j % 2 == 1)
+						{
+							cell.className = 'black';
+							if (j < cycles[i][3].length)
+							{
+								if (mice[cycles[i][3][j]].drug_comp == 1)
+								{
+									cell.innerHTML = mice[cycles[i][3][j]].name;
+									cell.style.color = "green";
+								}
+							}
+							
+							if (j < cycles[i][2].length)
+							{
+								if (mice[cycles[i][2][j]].drug_comp == 1)
+								{
+									cell.innerHTML = mice[cycles[i][2][j]].name;
+									cell.style.color = "blue";
+								}
+							}
+						}
+						else
+						{
+							cell.className = 'white';
+							if (j < cycles[i][3].length)
+							{
+								if (mice[cycles[i][3][j]].drug_comp == 0)
+								{
+									cell.innerHTML = mice[cycles[i][3][j]].name;
+									cell.style.color = "green";
+								}
+							}
+							
+							if (j < cycles[i][2].length)
+							{
+								if (mice[cycles[i][2][j]].drug_comp == 0)
+								{
+									cell.innerHTML = mice[cycles[i][2][j]].name;
+									cell.style.color = "blue";
+								}
+							}
+						}
+						row.appendChild(cell);
+				    }
+					
+					if (cycles[i][1] < 10 && i == sessions-1 && cycles[i+1][1] < 10)
+				    {				    	
+				    	for (j=device_no - cycles[i+1][1]; j<device_no; j++)
+					    {
+							var cell = document.createElement("TD");
+							if (j % 2 == 1)
+							{
+								cell.className = 'black';
+								if (j < device_no)
+								{
+									if (mice[cycles[i+1][2][cycles[i+1][1]-10+j]].drug_comp == 1)
+									{
+										cell.innerHTML = mice[cycles[i+1][2][cycles[i+1][1]-10+j]].name;
+									}
+								}
+							}
+							else
+							{
+								cell.className = 'white';
+								if (j < device_no)
+								{
+									if (mice[cycles[i+1][2][cycles[i+1][1]-10+j]].drug_comp == 0)
+									{
+										cell.innerHTML = mice[cycles[i+1][2][cycles[i+1][1]-10+j]].name;
+									}
+								}
+							}
+							cell.style.color = "blue";
+					        row.appendChild(cell);			        
+					    }
+				    }
+
+			    	var row = CycleTable2.insertRow(-1);
+
+			    	for (j=1; j <= 10; j++)
+			    	{
+			    		var cell = document.createElement("TD");
+			    		cell.className = 'deviceno';
+			    		cell.innerHTML = j;
+			    		row.appendChild(cell);
+			    	}
+			    	CycleDiv2.appendChild(CycleTable2);
+			    }
+	    	}
+	    	else if (trial >= 10)
+	    	{
+	    		alert('Suitable arrangement not found. Please try again or change the parameters.');
+	    	}
+	    	else
+	    	{
+	    		UploadProcess(trial+1);	
+	    	}
+		}
+
+		function distribute_cages(total_animals, drug_number, control_number, cages)
+		{
+			class Cage
+	        {
+			  constructor(cage_no, total_no, drug_no, control_no) 
+			  {
+			  	this.cage_no = cage_no;
+			  	this.total_no = total_no;	
+			   	this.drug_no = drug_no;		    
+			   	this.control_no = control_no;
+			  }
+			}
+
+			var cage_distribution = new Array();
+			var leftover_total = total_animals;
+			var leftover_drug = drug_number;
+			var leftover_control = control_number;
+
+			var thiscage_total;
+			var thiscage_drug;
+			var thiscage_control;
+
+			for (i=0; i<cages.length; i++)
+			{
+				thiscage_total = cages[i];
+				thiscage_drug = Math.round((leftover_drug * thiscage_total) / leftover_total); // calculates the proportion of drug animals to be set in this cage
+				thiscage_control = thiscage_total - thiscage_drug;
+
+				cage_distribution[i] = new Cage(i, thiscage_total, thiscage_drug, thiscage_control);
+
+				leftover_total = leftover_total - thiscage_total;
+				leftover_drug = leftover_drug - thiscage_drug;
+				leftover_control = leftover_control - thiscage_control;
+			}
+			return cage_distribution;
+		}
+
+		function compare_means(mice, arrangement_cycles, return_array_copy, min, cycles, merged_groups)
+		{	
+			var min_array = return_array_copy[1];
+			var sum_mor_perc = 0;
+			var sum_sal_perc = 0;
+			var sum_mor_time = 0;
+			var sum_sal_time = 0;
+			var sum_mor_weight = 0;
+			var sum_sal_weight = 0;
+			var perc_sem;
+			var time_sem;
+			var weight_sem;
+			var total_animals = Number(document.getElementById("total_animals").value);	
+			var control_number = document.getElementById("control_number").value;
+			var drug_number = document.getElementById("drug_number").value;
+			var comp_perc;
+			var comp_time;
+			var comp_weight;
+			var mor_perc_array = new Array();
+			var sal_perc_array = new Array();
+			var mor_time_array = new Array();
+			var sal_time_array = new Array();
+			var mor_weight_array = new Array();
+			var sal_weight_array = new Array();
+			var total_cycles = cycles.length;
+			var s = 0;
+			var m = 0;
+
+			//console.log(total_array);
+
+			for (i=0; i<total_cycles; i++)
+			{
+				for (j=0; j<cycles[i][1]; j++)
+				{
+					if (arrangement_cycles[i][j] == 0)
+					{
+						comp_perc = mice[cycles[i][2][j]].black_perc;
+						comp_time = mice[cycles[i][2][j]].black_time;						
+					}
+					else
+					{
+						comp_perc = mice[cycles[i][2][j]].white_perc;
+						comp_time = mice[cycles[i][2][j]].white_time;						
+					}
+					comp_weight = mice[cycles[i][2][j]].weight;
+
+					if (cycles[i][4][j] == 0) 
+					{
+						sum_sal_perc = sum_sal_perc + comp_perc;
+						sum_sal_time = sum_sal_time + comp_time;
+						sum_sal_weight = sum_sal_weight + comp_weight;
+						sal_perc_array[s] = comp_perc;
+						sal_time_array[s] = comp_time;
+						sal_weight_array[s] = comp_weight;
+						s++;
+					}
+					else
+					{
+						sum_mor_perc = sum_mor_perc + comp_perc;
+						sum_mor_time = sum_mor_time + comp_time;
+						sum_mor_weight = sum_mor_weight + comp_weight;
+						mor_perc_array[m] = comp_perc;
+						mor_time_array[m] = comp_time;
+						mor_weight_array[m] = comp_weight;
+						m++;
+					}
+				}
+
+				if (cycles[i][0] == 2)
+				{
+					for (j=0; j<cycles[i][1]; j++)
+					{
+						if (arrangement_cycles[i][j] == 0)
+						{
+							comp_perc = mice[cycles[i][3][j]].white_perc; // reversed
+							comp_time = mice[cycles[i][3][j]].white_time;
+						}
+						else
+						{
+							comp_perc = mice[cycles[i][3][j]].black_perc; // reversed
+							comp_time = mice[cycles[i][3][j]].black_time;
+						}
+						comp_weight = mice[cycles[i][3][j]].weight;
+
+						if (cycles[i][5][j] == 0) 
+						{
+							sum_sal_perc = sum_sal_perc + comp_perc;
+							sum_sal_time = sum_sal_time + comp_time;
+							sum_sal_weight = sum_sal_weight + comp_weight;
+							sal_perc_array[s] = comp_perc;
+							sal_time_array[s] = comp_time;
+							sal_weight_array[s] = comp_weight;
+							s++;
+						}
+						else
+						{
+							sum_mor_perc = sum_mor_perc + comp_perc;
+							sum_mor_time = sum_mor_time + comp_time;
+							sum_mor_weight = sum_mor_weight + comp_weight;
+							mor_perc_array[m] = comp_perc;
+							mor_time_array[m] = comp_time;
+							mor_weight_array[m] = comp_weight;
+							m++;
+						}
+					}
+				}
+			}
+
+			var avg_mor_perc = sum_mor_perc / drug_number;
+			var avg_sal_perc = sum_sal_perc / control_number;
+			var avg_diff_perc = avg_mor_perc - avg_sal_perc;
+			var abs_diff_perc = Math.abs(avg_diff_perc);	// calculate difference between % averages of two groups
+
+			var avg_mor_time = sum_mor_time / drug_number;
+			var avg_sal_time = sum_sal_time / control_number;
+			var avg_diff_time = avg_mor_time - avg_sal_time;
+			var abs_diff_time = Math.abs(avg_diff_time);	// calculate difference between time averages of two groups
+
+			var avg_mor_weight = sum_mor_weight / drug_number;
+			var avg_sal_weight = sum_sal_weight / control_number;
+			var avg_diff_weight = avg_mor_weight - avg_sal_weight;
+			var abs_diff_weight = Math.abs(avg_diff_weight);	// calculate difference between weight averages of two groups
+
+			// Create a plot for new minimum configuration
+
+			var plot_array = new Array();
+
+			plot_array[0] = avg_sal_perc;
+			plot_array[1] = calculate_SEM(sal_perc_array, avg_sal_perc); // SAL % SEM
+			plot_array[2] = avg_sal_time;
+			plot_array[3] = calculate_SEM(sal_time_array, avg_sal_time); // SAL T SEM
+			plot_array[4] = avg_mor_perc;
+			plot_array[5] = calculate_SEM(mor_perc_array, avg_mor_perc); // MOR % SEM
+			plot_array[6] = avg_mor_time;
+			plot_array[7] = calculate_SEM(mor_time_array, avg_mor_time); // MOR T SEM
+			plot_array[8] = avg_sal_weight;
+			plot_array[9] = calculate_SEM(sal_weight_array, avg_sal_weight); // SAL WEIGHT SEM
+			plot_array[10] = avg_mor_weight;
+			plot_array[11] = calculate_SEM(mor_weight_array, avg_mor_weight); // MOR WEIGHT SEM
+
+
+			var sem_diff_time = Math.abs(plot_array[3] - plot_array[7]);
+			var sem_diff_perc = Math.abs(plot_array[1] - plot_array[5]);
+			var sem_diff_weight = Math.abs(plot_array[9] - plot_array[11]);
+			//console.log('SEM MOR time values: ', mor_time_array, avg_mor_time)
+			//console.log(return_array_copy);
+
+			var the_score = Math.sqrt(Math.pow(abs_diff_time/((plot_array[3] + plot_array[7])/2), 2) + Math.pow(abs_diff_perc/((plot_array[1] + plot_array[5])/2), 2) + (Math.pow(sem_diff_time/((plot_array[3] + plot_array[7])/2), 2) + Math.pow(sem_diff_perc/((plot_array[1] + plot_array[5])/2), 2))/2);
+
+			// var the_score = Math.sqrt(Math.pow(abs_diff_time/((plot_array[3] + plot_array[7])/2), 2) + Math.pow(abs_diff_perc/((plot_array[1] + plot_array[5])/2), 2) + (Math.pow(abs_diff_weight/((plot_array[9] + plot_array[11])/2), 2)*5) + (Math.pow(sem_diff_time/((plot_array[3] + plot_array[7])/2), 2) + Math.pow(sem_diff_perc/((plot_array[1] + plot_array[5])/2), 2) + Math.pow(sem_diff_weight/((plot_array[9] + plot_array[11])/2), 2))/2);
+
+			if (the_score < min && Math.abs(50 - avg_sal_perc) <= 1)
+			{
+				return_array_copy[0] = the_score; // min score
+				return_array_copy[1] = arrangement_cycles.slice();
+				return_array_copy[2] = abs_diff_time;
+				return_array_copy[3] = abs_diff_perc;
+				return_array_copy[4] = plot_array;
+				return_array_copy[5] = abs_diff_weight;
+				console.log(min, abs_diff_time, abs_diff_perc);
+			}
+			return return_array_copy;
+		}
+
+		function calculate_SEM(values, mean) // check if this actually calculates correct
+		{
+			var sem_sum = 0;
+			var n = values.length;
+			for (i=0; i<n; i++)
+			{
+				subtr_square = Math.pow((values[i] - mean), 2);
+				sem_sum = sem_sum + subtr_square;
+			}
+			var sd = Math.sqrt(sem_sum/n);
+			var sem = sd/Math.sqrt(n);
+			return sem;
+		}
+
+		function plot_baseline(id, name, sal_time_mean, sal_time_sem, mor_time_mean, mor_time_sem)
+		{
+			var newplot = document.createElement("div");
+			newplot.id = id;
+			newplot.className = 'a';
+			var bigdiv = document.getElementById("plotDiv");
+			bigdiv.appendChild(newplot);
+
+			var trace1 = {
+			  x: [name],
+			  y: [sal_time_mean],
+			  name: 'Control',
+			  	marker:{
+   				color: ['rgba(204,204,204,1)'], 
+   				opacity: 0.9,
+	   				line: {
+				      color: 'rgb(0,0,0)',
+				      width: 2
+				    },
+   				},
+			  error_y: {
+			    type: 'data',
+			    array: [sal_time_sem],
+			    visible: true,
+			    thickness: 2,
+			    width: 20,
+			    opacity: 1
+			  },
+			    legend: {
+				    x: 50,
+				    y: 50.0,
+				    bgcolor: 'rgba(255, 255, 255, 0)',
+				    bordercolor: 'rgba(0 ,0 ,0 , 0)'
+				  },
+
+				barmode: 'group',
+				bargap: 0.15,
+				bargroupgap: 2,
+				type: 'bar'
+			};
+
+			var trace2 = {
+			  x: [name],
+			  y: [mor_time_mean],
+			  name: 'Drug',
+			  marker:{
+			  color: ['rgba(222,45,38,0.8)'],
+			  opacity: 0.9,
+			  			  line: {
+			      color: 'rgb(0,0,0)',
+			      width: 2
+			    },
+			  },
+			  error_y: {
+			    type: 'data',
+			    array: [mor_time_sem],
+			    visible: true,
+			    thickness: 2,
+			    width: 20,
+			    opacity: 1
+			  },
+			  
+			  type: 'bar'
+			};
+			var data = [trace1, trace2];
+			var layout = {barmode: 'group'};
+			Plotly.newPlot(id, data, layout);
+		}
+
+		function group_shuffle(starting_cage, cage_distribution, number_of_cages, cages_array)
+		{
+			var total_animals = Number(document.getElementById("total_animals").value);	
+			var merged_groups = new Array();
+			for (i=starting_cage; i<number_of_cages; i++)
+			{
+				// set all drug animals at the bottom initially
+				for (j=cage_distribution[i].total_no-1; j>(cage_distribution[i].total_no - cage_distribution[i].drug_no - 1); j--)
+				{
+					cages_array[i][j] = 1;
+				}
+
+				// set all control animals at the top
+				for (j=0; j<cage_distribution[i].control_no; j++)
+				{
+					cages_array[i][j] = 0;
+				}
+				shuffle(cages_array[i]); // shuffle each cage groups to randomize
+				Array.prototype.push.apply(merged_groups, cages_array[i]); // merge into one long array
+			}
+
+			if (number_of_cages == total_animals)
+			{
+				shuffle(merged_groups); // shuffle groups if single-housed
+				for (i=0; i<number_of_cages; i++)
+				{
+					cages_array[i] = merged_groups[i]; 
+				}
+			}
+
+			console.log('Shuffled groups: '+ cages_array);
+			console.log(merged_groups);
+			return [cages_array, merged_groups];
+
+			// NEXT STEP: cage drug vs control position iterator that refers to the same function.
+		}
+
+		function shuffle(array) 
+		{
+			array.sort(() => Math.random() - 0.5);
+			return array;
+		}
+
+		function cage_grouping(starting_cage, cages_array, cage_distribution, iter_no)
+		{
+			var cant_moveup = false;
+			var cage_length = cages_array[starting_cage].length;
+			var ones_above = 0;
+			var ones_to_fill;
+			var last_cage;
+			var total_cages = cage_distribution.length;
+
+			if (starting_cage == total_cages)
+			{
+				last_cage = true;
+			}
+			else
+			{
+				last_cage = false;
+			}
+
+			while (starting_cage >= 0)
+			{
+				while (cant_moveup != true)
+				{
+					cant_moveup = true;
+
+					for (i=cage_length-1; i>0; i--)
+					{
+						if (cages_array[starting_cage][i] == 1)
+						{
+							if (cages_array[starting_cage][i-1] == 0)
+							{
+								cant_moveup = false;
+								cages_array[starting_cage][i-1] = 1;
+								for (j=i-1; j>=0; j--)
+								{
+									ones_above = ones_above + cages_array[starting_cage][j];
+								}
+								
+								// set leftover ones at the bottom
+								ones_to_fill = cage_distribution[starting_cage].drug_no - ones_above;
+								ones_above = 0; // set to zero for the next iteration
+
+								for (j=cage_length-1; j > cage_length-1 - ones_to_fill; j--)
+								{
+									cages_array[starting_cage][j] = 1;
+								}
+
+								// set leftover zeros at the top
+								for (j=cage_length-1 - ones_to_fill; j >= i; j--)
+								{
+									cages_array[starting_cage][j] = 0;
+								}
+
+								if (last_cage == false)
+								{
+									cages_array = zero_rest(starting_cage + 1, cage_distribution, total_cages, cages_array);
+									// console.log(iter_no + " iteration: " + cages_array);
+									iter_no++;
+									starting_cage = total_cages- 1;
+									// cage_grouping(cage_distribution.length - 1, cages_array, cage_distribution, iter_no);
+								}
+
+								break; // stop searching for a switch when one is found
+							}
+						}
+					}
+
+				}
+			starting_cage--;
+			cant_moveup = false;
+			}
+		console.log(iter_no+1);
+		return cages_array;	
+		}
+
+		function cycle_arranger(double_cond, total_animals, device_no)
+		{
+			var cycles = new Array();
+			var mouse_no = 0;
+			var first_remainder_done;
+
+			if (double_cond)
+			{
+				mice_per_device = 2;
+			}
+			else
+			{
+				mice_per_device = 1;
+			}
+			var total_cycles;
+			var remainder_cycles;
+			var quotient = Math.floor(total_animals/(device_no*mice_per_device));
+			var remainder = total_animals % (device_no*mice_per_device);
+			
+			var full_cycles = (total_animals - remainder)/(device_no*mice_per_device);
+			if (remainder > device_no)
+			{
+				remainder_cycles = 2;
+			}
+			else if (remainder > 0)
+			{
+				remainder_cycles = 1;
+			}
+			else
+			{
+				remainder_cycles = 0;
+			}
+			total_cycles = full_cycles + remainder_cycles;
+
+			for (i=0; i<full_cycles; i++) // set up full cycles
+			{
+				cycles[i] = new Array();
+				if (double_cond)
+				{
+					cycles[i][0] = 2; // double cycle
+				}
+				else
+				{
+					cycles[i][0] = 1; // single cycle
+				}
+
+				cycles[i][1] = device_no; // n of the cycle (first run only, not with the opposite)
+
+				cycles[i][2] = new Array(); // animal ID's (consecutive, not actual) of animals in each cycle
+				for (j=0; j<cycles[i][1]; j++)
+				{
+					cycles[i][2][j] = mouse_no;
+					mouse_no++;
+				}
+				if (cycles[i][0] == 2)
+				{
+					cycles[i][3] = new Array(); // animal ID's (consecutive, not actual) of animals in the opposite part of the cycle
+					for (j=0; j<cycles[i][1]; j++)
+					{
+						cycles[i][3][j] = mouse_no;
+						mouse_no++;
+					}
+				}
+			}
+
+			temp_cycle_no = total_cycles - remainder_cycles;
+			if (remainder_cycles == 2)
+			{
+				cycles[temp_cycle_no] = new Array();
+				cycles[temp_cycle_no][0] = 2; // a cycle is always double if the remainder is 2
+
+				cycles[temp_cycle_no][1] = remainder - device_no;
+
+				cycles[temp_cycle_no][2] = new Array();
+				for (j=0; j<cycles[temp_cycle_no][1]; j++)
+				{
+					cycles[temp_cycle_no][2][j] = mouse_no;
+					mouse_no++; 
+				}
+				if (cycles[temp_cycle_no][0] == 2)
+				{
+					var remainder_cycle_mouse_no = mouse_no + ((device_no * mice_per_device) - remainder);
+					cycles[temp_cycle_no][3] = new Array(); // animal ID's (consecutive, not actual) of animals in the opposite part of the cycle
+					for (j=0; j<cycles[temp_cycle_no][1]; j++)
+					{
+						cycles[temp_cycle_no][3][j] = remainder_cycle_mouse_no;
+						remainder_cycle_mouse_no++;
+					}
+				}
+				temp_cycle_no++;
+				first_remainder_done = true;
+				remainder = device_no*2 - remainder;
+			}
+			
+			if ((remainder_cycles == 1) || (first_remainder_done == true))
+			{
+				cycles[temp_cycle_no] = new Array();
+				cycles[temp_cycle_no][0] = 1; // a cycle is always single if the remainder is 1
+
+				cycles[temp_cycle_no][1] = remainder;
+
+				cycles[temp_cycle_no][2] = new Array();
+				for (j=0; j<cycles[temp_cycle_no][1]; j++)
+				{
+					cycles[temp_cycle_no][2][j] = mouse_no;
+					mouse_no++;
+				}
+			}
+			return cycles;
+		}
+
+		function comp_arranger(total_cycles, cycles, merged_groups, mice)
+		{
+			var comp_arrangement = new Array();
+			var arranger_length = 0;
+			for (i=0; i<total_cycles; i++)
+			{
+				arranger_length = arranger_length + cycles[i][1];
+			}
+			console.log('Arranger length: ' + arranger_length + ' , Double? ' + cycles[0][0]);
+
+			for (i=0; i<arranger_length; i++)
+			{
+				comp_arrangement[i] = 0; // set all values of original raw comp_arrangement to 0
+			}
+
+			var seq = -1;
+			var last_0 = 0;
+			var return_array_copy = new Array();
+			return_array_copy[0] = 999999;
+			var min = return_array_copy[0];
+			while (last_0 != -1)
+			{
+				last_0 = -1;
+				seq++;
+
+				var starting_element = 0;
+				var groups_element = 0;
+				var arrangement_cycles = new Array();
+				for (i=0; i<total_cycles; i++)
+				{
+					arrangement_cycles[i] = new Array();
+					cycles[i][4] = new Array();
+					for (j=0; j<cycles[i][1]; j++)
+					{
+						arrangement_cycles[i][j] = comp_arrangement[starting_element + j];
+						cycles[i][4][j] = merged_groups[j+groups_element];
+					}
+					groups_element = groups_element + cycles[i][1];
+					starting_element = starting_element + cycles[i][1];
+
+					if (cycles[i][0] == 2)
+					{
+						cycles[i][5] = new Array();
+
+						for (j=0; j<cycles[i][1]; j++)
+						{
+							cycles[i][5][j] = merged_groups[j+groups_element];
+						}
+						groups_element = groups_element + cycles[i][1];
+					}
+				}
+
+
+				var return_array = compare_means(mice, arrangement_cycles, return_array_copy, min, cycles, merged_groups);
+				var return_array_copy = return_array.slice();
+
+				min = return_array_copy[0];
+				min_array = return_array_copy[1];
+				// time_diff = return_array_copy[2];
+				// perc_diff = return_array_copy[3];
+
+
+
+				for (i=0; i<arranger_length; i++) // search for the last 0
+				{
+					if (comp_arrangement[i] == 0)
+					{
+						last_0 = i;
+					}
+				}
+
+				if (last_0 != -1)
+				{
+					comp_arrangement[last_0] = 1;
+
+					for (i=last_0 + 1; i<arranger_length; i++)
+					{
+						comp_arrangement[i] = 0;
+					}
+				}
+			}
+
+			console.log('Cycles array: ', cycles);
+			console.log('interim return_array: ', return_array);
+			return return_array_copy;
+		}
+
+	</script>
+<body>
+</html>

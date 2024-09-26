@@ -1,0 +1,45 @@
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>CPP randomizer</title>
+      </head>
+      <body>
+      	Animal ID: <input id="ID"><br>
+      	Cage number: <input type="number" id="cage"><br>
+      	Color: <input id="color"><br>
+        Light preference: <input id="light"><br>
+        <button onclick="myFunction()">Submit</button>
+
+     
+			<script type="text/javascript">
+
+        var mice = [];
+      	        
+        class Mouse
+        {
+          constructor(id, cage, color, light) 
+          {
+            this.id = id;
+            this.cage = cage;
+            this.color = color;
+            this.light = light;
+          }
+        }
+
+        function myFunction()
+          {
+            var id = document.getElementById("ID").value;
+            var cage = document.getElementById("cage").value;
+            var color = document.getElementById("color").value;
+            var light = document.getElementById("light").value;
+            mice[0] = new Mouse(id, cage, color, light);
+          alert(mice[0].id);
+          alert(mice[0].cage);
+          alert(mice[0].color);
+          alert(mice[0].light);
+          }
+
+      </script>
+      
+    </body>
+  </html>  

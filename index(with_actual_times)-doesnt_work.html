@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>CPP randomizer</title>
+	<script>
+		// var n = 10; // total number of mice used for the study
+		var black_comp_input = [/* N1 - N40 */]
+		var white_comp_input = [/* N1 - N40 */]
+
+	</script>
+</head>
+<body>
+	Total number of animals used: <input type="number" id="total_animals" onchange="odd_vs_even()"><br>
+	Number of animals in drug group: <input type="number" id="drug_number" onchange="calculate_control()"><br>
+	Number of animals in control group: <input type="number" id="control_number" onblur="check_total()">
+	<p id="total_alert"></p>
+	Number of cages used: <input type="number" id="total_cages"><br>
+
+	<input type="file" id="fileUpload" />
+	<input type="button" id="upload" value="Upload" onclick="UploadProcess()" />
+	<br/>
+	<div id="ExcelTable"></div>
+
+	<button onclick="print_setup()">Submit</button>
+	<br>
+	<table>
+		<thead>
+			<tr>
+				<th>Compartment</th>
+			</tr>
+		</thead>
+		<tbody id="output">
+		</tbody>
+	</table>
+
+
+	<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.13.5/xlsx.full.min.js"></script>
+	<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.13.5/jszip.js"></script>
+	<script type="text/javascript">
+	    function UploadProcess() {
+	    	
+	        //Reference the FileUpload element.
+	        var fileUpload = document.getElementById("fileUpload");
+	 
+	        //Validate whether File is valid Excel file.
+	        var regex = /^([a-zA-Z0-9\s_\\.\-:])+(.xls|.xlsx)$/;
+	        if (regex.test(fileUpload.value.toLowerCase())) {
+	            if (typeof (FileReader) != "undefined") {
+	                var reader = new FileReader();
+	 
+	                //For Browsers other than IE.
+	                if (reader.readAsBinaryString) {
+	                    reader.onload = function (e) {
+	                        GetTableFromExcel(e.target.result);
+	                    };
+	                    reader.readAsBinaryString(fileUpload.files[0]);
+	                } else {
+	                    //For IE Browser.
+	                    reader.onload = function (e) {
+	                        var data = "";
+	                        var bytes = new Uint8Array(e.target.result);
+	                        for (var i = 0; i < bytes.byteLength; i++) {
+	                            data += String.fromCharCode(bytes[i]);
+	                        }
+	                        GetTableFromExcel(data);
+	                    };
+	                    reader.readAsArrayBuffer(fileUpload.files[0]);
+	                }
+	            } else {
+	                alert("This browser does not support HTML5.");
+	            }
+	        } else {
+	            alert("Please upload a valid Excel file.");
+	        }
+	    };
+	    function GetTableFromExcel(data) {
+	        //Read the Excel File data in binary
+	        var workbook = XLSX.read(data, {
+	            type: 'binary'
+	        });
+	 
+	        //get the name of First Sheet.
+	        var Sheet = workbook.SheetNames[0];
+	 
+	        //Read all rows from First Sheet into an JSON array.
+	        var excelRows = XLSX.utils.sheet_to_row_object_array(workbook.Sheets[Sheet]);
+	 
+	        //Create a HTML Table element.
+	        var myTable  = document.createElement("table");
+	        myTable.border = "1";
+	 
+	        //Add the header row.
+	        var row = myTable.insertRow(-1);
+	 
+	        //Add the header cells.
+	        var headerCell = document.createElement("TH");
+	        headerCell.innerHTML = "Cage ID";
+	        row.appendChild(headerCell);
+
+	        var headerCell = document.createElement("TH");
+	        headerCell.innerHTML = "Animal ID";
+	        row.appendChild(headerCell);
+	 
+	        headerCell = document.createElement("TH");
+	        headerCell.innerHTML = "Black Comp %";
+	        row.appendChild(headerCell);
+	 
+	        headerCell = document.createElement("TH");
+	        headerCell.innerHTML = "White Comp %";
+	        row.appendChild(headerCell);	
+
+	        headerCell = document.createElement("TH");
+	        headerCell.innerHTML = "Black Comp t";
+	        row.appendChild(headerCell);
+	 
+	        headerCell = document.createElement("TH");
+	        headerCell.innerHTML = "White Comp t";
+	        row.appendChild(headerCell); 
+
+	        var mice = [];
+
+	        class Mouse
+	        {
+			  constructor(name, cage, black_perc, white_perc, black_time, white_time) 
+			  {
+			  	this.name = name;
+			    this.cage = cage;
+			    this.black_perc = black_perc;
+			    this.white_perc = white_perc;
+			    this.black_time = black_time;
+			    this.white_time = white_time;			    
+			  }
+			}
+	 		
+
+	 		var cages = [];
+
+	        //Add the data rows from Excel file.
+	        for (var i = 0; i < excelRows.length; i++) {
+	            //Add the data row.
+	            var row = myTable.insertRow(-1);
+	 
+	            //Add the data cells.
+
+	            var cell = row.insertCell(-1);
+	            cell.innerHTML = excelRows[i].Cage;
+
+
+	            var cell = row.insertCell(-1);
+	            cell.innerHTML = excelRows[i].Animal;
+	 
+	            cell = row.insertCell(-1);
+	            cell.innerHTML = excelRows[i].Black_perc;
+	 
+	            cell = row.insertCell(-1);
+	            cell.innerHTML = excelRows[i].White_perc;
+
+	            cell = row.insertCell(-1);
+	            cell.innerHTML = excelRows[i].Black_time;
+	 
+	            cell = row.insertCell(-1);
+	            cell.innerHTML = excelRows[i].White_time;
+
+	            mice[i] = new Mouse(excelRows[i].Animal, excelRows[i].Cage, excelRows[i].Black_perc, excelRows[i].White_perc, excelRows[i].Black_time, excelRows[i].White_time);
+
+	       	    var current_cage = parseInt(excelRows[i].Cage);
+
+	            if (cages[current_cage] == undefined)
+	            {
+	            	cages[current_cage] = 1;
+	            }
+	            else
+	            {
+	            	cages[current_cage]++;
+	            }	     
+	        }    
+	 		
+	        var ExcelTable = document.getElementById("ExcelTable");
+	        ExcelTable.innerHTML = "";
+	        ExcelTable.appendChild(myTable);
+
+	  //       function executor(mice) {
+
+		 //       	let best_arrangement = new Promise(function(resolve, reject) {   
+		 //        	var temp = true;
+			//         var min_array = myFunction(mice);
+			// 		if (temp)
+			// 		{
+			// 			resolve(min_array);
+			// 		}
+			// 		else 
+			// 		{
+			// 			reject("Sorry, didn't work.");
+			// 		}
+			// 	});
+			// 	return best_arrangement;
+	  //      	}
+
+			// async function print_setup(mice)
+			// {
+			// 	//document.getElementById("output").innerHTML += "<tr><td>Overall min: " + min + "</td></tr>";
+			// 	var result = await executor(mice);
+			// 		document.getElementById("output").innerHTML += "<tr><td> FIRST COMP: " + result[0] + "</td></tr>";
+			// 		for (i=0; i<10; i++)
+			// 		{
+			// 			document.getElementById("output").innerHTML += "<tr><td>" + result[0] + "</td></tr>";
+			// 		}
+			// }
+
+			myFunction(mice);
+
+	    }
+
+
+		/* if odd total number function
+		function odd_vs_even()
+		{
+			var n = document.getElementById("total_animals").value;
+			var n_odd = false;
+			//add that only positive integers are possible later
+			if (n % 2 == 1)
+			{
+				n_odd = true;
+				document.getElementById("odd_alert").innerHTML = "You have indicated an odd number of ";
+			}
+		}
+		*/
+		function calculate_control()
+		{
+			var total_animals = document.getElementById("total_animals").value;
+			var drug_number = document.getElementById("drug_number").value;
+			var control_number = total_animals - drug_number;
+			document.getElementById("control_number").value = control_number;
+		}
+
+		function check_total()
+		{
+			var total_animals = Number(document.getElementById("total_animals").value);
+			var drug_number = Number(document.getElementById("drug_number").value);
+			var control_number = Number(document.getElementById("control_number").value);
+			var sum = drug_number + control_number;
+			if (total_animals != sum)
+			{
+				alert("Number of drug animals and control animals doesn't match the total!");
+				document.getElementByID("total_alert").innerHTML = "Number of drug animals and control animals doesn't match the total!"; // doesn't work...
+			}
+		}
+
+		function myFunction(mice)
+		{
+			// ADD: check if all data in form has been filled
+
+			var compartments = new Array();
+			var min_array = new Array();
+			var copy_min_array = min_array;
+			var min = 999999;
+			var prev_min = min;
+			var sequence = 0;
+
+			//alert("function is working");
+
+			for (i=0; i<10; i++) // set all compartments to 0
+			{
+				compartments[i] = 0;
+			}
+
+			var last_0 = 0;
+
+			while (last_0 != -1)
+			{
+				sequence++;
+
+				var faulty_array = [1,1,1,1,1,1,1,1,0,1];
+				if(JSON.stringify(faulty_array)==JSON.stringify(compartments)) 
+				{
+					console.log(min_array, sequence);
+				}
+
+				last_0 = -1;
+				//alert("loop starts");
+				var return_array = compare_means(mice, compartments, min_array, min, sequence);
+
+				min = return_array[0];
+				min_array = return_array[1];
+
+
+				//alert("hi?");
+
+				for (i=0; i<10; i++) // search for the last 0
+				{
+					if (compartments[i] == 0)
+					{
+						last_0 = i;
+					}
+				}
+				if (last_0 != -1)
+				{
+					compartments[last_0] = 1;	
+					for (i=last_0 + 1; i<10; i++)
+					{
+						compartments[i] = 0;
+					}
+				}
+
+				// if (prev_min != min)
+				// {
+				// 	//alert("Overall min:" + min);
+				// 	document.getElementById("output").innerHTML += "<tr><td>Iteration: " + sequence + "</td></tr>";
+				// 	document.getElementById("output").innerHTML += "<tr><td>Iteration min: " + min + "</td></tr>";
+				// 	//alert(min);
+				// 	for (i=0; i<10; i++)
+				// 	{
+				// 		document.getElementById("output").innerHTML += "<tr><td>" + min_array[i] + "</td></tr>";
+				// 	}
+				// 	prev_min = min;	
+				// 	console.log(sequence);			
+				// }
+
+				// let result = min_array.every(function (e) {
+				//     return e > 0;
+				// });
+
+				// if (result)
+				// {
+				// 	console.log(sequence);
+				// }
+
+				if (last_0 == -1)
+				{
+					console.log('last = ' + min_array);
+					document.getElementById("output").innerHTML += "<tr><td> Iteration: " + sequence + "</td></tr>";
+					for (i=0; i<10; i++)
+					{
+						document.getElementById("output").innerHTML += "<tr><td>" + min_array[i] + "</td></tr>";
+					}
+					console.log(min);
+				}
+				//alert(min);
+			}
+
+			// setTimeout(print_setup(min, min_array), 3000);
+
+
+			//alert(min);
+		}
+
+		function compare_means(mice, arrangement, min_array, min, sequence)
+		{
+			//alert("compare_means is working!");
+			
+			var sum_mor_perc = 0;
+			var sum_sal_perc = 0;
+			var sum_mor_time = 0;
+			var sum_sal_time = 0;			
+			var set1perc = new Array();
+			var set2perc = new Array();
+			var set1time = new Array();
+			var set2time = new Array();
+			var total_animals = Number(document.getElementById("total_animals").value);			
+
+			for (i=0; i<10; i++)
+			{
+				//alert(arrangement[i]);
+				if (arrangement[i] == 0)
+				{
+					set1perc[i] = parseFloat(mice[i].black_perc);
+					set1time[i] = parseFloat(mice[i].black_time)/(parseFloat(mice[i].black_time)+parseFloat(mice[i].white_time));
+				}
+				else
+				{
+					set1perc[i] = parseFloat(mice[i].white_perc);
+					set1time[i] = parseFloat(mice[i].white_time)/(parseFloat(mice[i].black_time)+parseFloat(mice[i].white_time));
+				}
+				if(i % 2 == 0) 
+				{
+					sum_mor_perc = sum_mor_perc + set1perc[i];
+					sum_mor_time = sum_mor_time + set1time[i];
+				}
+				else
+				{
+					sum_sal_perc = sum_sal_perc + set1perc[i];
+					sum_mor_time = sum_mor_time + set1time[i];
+				}
+			}
+			for (i=0; i<10; i++)
+			{
+				if (arrangement[i] == 0)
+				{
+					set2perc[i] = parseFloat(mice[10+i].white_perc); // reversed
+					set2time[i] = parseFloat(mice[10+i].white_time)/(parseFloat(mice[10+i].white_time)+parseFloat(mice[10+i].black_time));
+				}
+				else
+				{
+					set2perc[i] = parseFloat(mice[10+i].black_perc); // reversed
+					set2time[i] = parseFloat(mice[10+i].black_time)/(parseFloat(mice[10+i].white_time)+parseFloat(mice[10+i].black_time));
+				}
+				if(i % 2 == 0) 
+				{
+					sum_mor_perc = sum_mor_perc + set2perc[i];
+					sum_mor_time = sum_mor_time + set2time[i];
+				}
+				else
+				{
+					sum_sal_perc = sum_sal_perc + set2perc[i];
+					sum_mor_time = sum_mor_time + set2time[i];
+				}
+			}
+
+			var avg_mor_perc = sum_mor_perc / 10;
+			var avg_sal_perc = sum_sal_perc / 10;
+			var avg_mor_time = sum_mor_time / 10;
+			var avg_sal_time = sum_sal_time / 10;
+
+			var avg_diff_perc = avg_mor_perc - avg_sal_perc;
+			var abs_diff_perc = Math.abs(avg_diff_time);
+			var avg_diff_time = avg_mor_time - avg_sal_time;
+			var abs_diff_time = Math.abs(avg_diff_time);
+			//alert("Iteration min:" + abs_diff);			
+			var abs_diff = Math.sqrt(Math.pow(abs_diff_perc, 2) + Math.pow(abs_diff_time, 2));
+
+			if (abs_diff < min)
+			{
+				console.log(avg_mor, avg_sal);
+				min = abs_diff;
+				min_array = arrangement;
+
+				document.getElementById("output").innerHTML += "<tr><td>Iteration: " + sequence + "</td></tr>";
+				document.getElementById("output").innerHTML += "<tr><td>Iteration min: " + min + "</td></tr>";
+				//alert(min);
+				for (i=0; i<10; i++)
+				{
+					document.getElementById("output").innerHTML += "<tr><td>" + min_array[i] + "</td></tr>";
+				}
+				console.log(sequence);	
+			}
+
+			//alert("Overall min:" + min);
+			return [min, min_array];
+		}
+
+	</script>
+<body>
+</html>
